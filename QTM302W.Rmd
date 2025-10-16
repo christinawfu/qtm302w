@@ -1,0 +1,165 @@
+---
+title: "QTM 302W"
+author: "Gina Ge & Christina Fu"
+date: "2025-10-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+Introduction: 
+This project uses a subset of the 2024 National Health Interview Survey adult questionnaire to explore the relationship between sleep quality and mental health among U.S. adults. The NHIS is a survey conducted annually by the National Center for Health Statistics. From the dataset, we extracted data on sleep quality and mental-health diagonoses and recent care on anxiety, depression, and psychological distress. The motivation for the project is that sleep issues and mental health problems are becoming more widespread and normal common among adults and even teenagers. These issues could severely affect people's lives. Therefore, understanding how sleep quality correlates with mental health problems might help adults have healthier lives and better efficiency on work.
+
+## Data Cleaning: 
+```{r}
+data<- read.csv("/Users/christinafu/Documents/EDA_Project/adult24.csv")
+```
+Upload the original dataset consisting 630 variables that provides information about the 2024 NHIS data on participants.
+
+```{r}
+vars <- c(
+  "ANXEV_A","DEPEV_A",
+  "MHRX_A","MHTHRPY_A","MHTPYNOW_A","MHTHDLY_A","MHTHND_A",
+  "SAD_A","NERVOUS_A","RESTLESS_A","HOPELESS_A","EFFORT_A","WORTHLESS_A",
+  "CFSEV_A","CFSNOW_A",
+  "SLPHOURS_A","SLPREST_A","SLPFLL_A","SLPSTY_A","SLPMED1_A","SLPMED2_A","SLPMED3_A"
+)
+id_like <- c("SEQN","RespondentID","ID")
+vars <- unique(c(intersect(id_like, names(data)), vars))
+keep <- intersect(vars, names(data))
+out  <- data[ , keep, drop = FALSE]
+out_path <- "/Users/christinafu/Documents/EDA_Project/adult24_selected.csv"
+write.csv(out, out_path, row.names = FALSE)
+
+cat("Saved:", out_path, "\nColumns:", paste(colnames(out), collapse=", "), "\n")
+```
+Extract only the column variables we need and then keep participants ID to generate a new CSV file for analysis. This would be more convenient for the further analysis. 
+
+```{r}
+data_selected<- read.csv("/Users/christinafu/Documents/EDA_Project/adult24_selected.csv")
+```
+
+```{r}
+library(dplyr)
+library(stringr)
+
+# --- 1) Rename to friendlier snake_case (only if columns exist) ---
+data_selected <- data_selected %>%
+  rename(
+    anxiety_ever       = "ANXEV_A",
+    depression_ever       = "DEPEV_A",
+    medication_past12     = "MHRX_A",
+    therapy_past12 = "MHTHRPY_A",
+    therapy_now = "MHTPYNOW_A",
+    delay_therapy  = "MHTHDLY_A",
+    need_therapy = "MHTHND_A",
+    sad_30d        = "SAD_A",
+    nervous_30d    = "NERVOUS_A",
+    restless_30d   = "RESTLESS_A",
+    hopeless_30d   = "HOPELESS_A",
+    effort_30d     = "EFFORT_A",
+    worthless_30d  = "WORTHLESS_A",
+    cfs_ever       ="CFSEV_A",
+    cfs_now        = "CFSNOW_A",
+    sleep_hours    = "SLPHOURS_A",
+    well_rested    = "SLPREST_A",
+    trouble_fall_asleep    = "SLPFLL_A",
+    trouble_stay_asleep     ="SLPSTY_A",
+    prescribe_med_sleep = "SLPMED1_A",
+    otc_med_sleep  = "SLPMED2_A",
+    mj_sleep   = "SLPMED3_A"
+  )
+```
+
+```{r}
+if ("sleep_hours" %in% names(data_selected)) {
+  data_selected <- data_selected %>%
+    mutate(sleep_hours = ifelse(sleep_hours >= 0 & sleep_hours <= 24, sleep_hours, NA_real_))
+}
+```
+Rename the column names so that it is easier for us to understand. Sleep_hours columns sometimes have values like 98. Therefore, we need to set those out of range numbers to NA.
+
+## Data Distributions:
+#### Hours Slept Daily
+```{r}
+library(ggplot2)
+
+# Summary Statistics
+summary(data_selected$sleep_hours)
+
+# Histogram
+ggplot(data_selected, aes(x = sleep_hours)) +
+  geom_histogram(binwidth = 0.5) +
+  scale_x_continuous(breaks = seq(0, 24, by = 1)) +
+  labs(x = "Hours of sleep per day", y = "Count",
+       title = "Distribution of reported sleep duration") +
+  theme_minimal()
+```
+The distribution of hours slept in a 24-hour period appears to be fairly normally distributed with the mean being 7.124 hours and the median being 7 hours. 
+
+#### Relevant Mental Health Variables
+```{r}
+# Therapy/Counseling Received
+ggplot(data_selected, aes(x = factor(therapy_past12))) +
+  geom_bar() +
+  labs(x = "Received counseling/therapy within past 12 months", y = "Count",
+       title = "Therapy usage among respondents")
+
+# Restlessness (indicator of psychological distress)
+ggplot(data_selected, aes(x = factor(restless_30d), y = sleep_hours)) +
+  geom_boxplot() +
+  labs(x = "Restlessness level", y = "Hours of sleep",
+       title = "Sleep duration vs. restlessness")
+```
+
+## Data Analysis:
+### Is there a correlation betweeen duration of sleep and restlessness?
+```{r}
+spearman_result <-cor.test(data_selected$sleep_hours, data_selected$restless_30d,  method = "spearman")
+spearman_result
+
+ggplot(data_selected, aes(x = sleep_hours, y = restless_30d)) +
+  geom_point(alpha = 0.4) +
+  geom_smooth(method = "lm", se = TRUE, color = "blue") +
+  labs(
+    title = "Relationship between sleep duration and restlessness",
+    x = "Restlessness level",
+    y = "Sleep duration (hours)"
+  ) +
+  theme_minimal()
+```
+The correlation coefficient between hours slept and restlessness is 0.1219049 and the p-value is less than 2.2e-16. Because the correlation coefficient is close to 0, there is almost no association between the two variables. 
+### What is the mean sleep for those with anxiety & depression compared to those without?
+```{r}
+# Creating a variable that combines depression & anxiety variables
+data_selected <- data_selected %>%
+  mutate(
+    depression_ever = ifelse(depression_ever %in% c(7, 8, 9), NA, depression_ever),
+    anxiety_ever = ifelse(anxiety_ever %in% c(7, 8, 9), NA, anxiety_ever),
+    mh_group = case_when(
+      depression_ever == 1 & anxiety_ever == 1 ~ "Both depression and anxiety",
+      depression_ever == 1 & anxiety_ever == 2 ~ "Depression only",
+      depression_ever == 2 & anxiety_ever == 1 ~ "Anxiety only",
+      depression_ever == 2 & anxiety_ever == 2 ~ "Neither",
+      TRUE ~ NA_character_
+    )
+  )
+table(data_selected$mh_group)
+
+# Visualization
+data_selected %>%
+  group_by(mh_group) %>%
+  summarise(avg_sleep = mean(sleep_hours, na.rm = TRUE), sd_sleep = sd(sleep_hours, na.rm = TRUE), n = n()) %>%
+  ggplot(aes(x = mh_group, y = avg_sleep, ymin = avg_sleep - sd_sleep, ymax = avg_sleep + sd_sleep)) +
+    geom_col(fill = "lightblue") +
+    geom_errorbar(width = 0.2) +
+    labs(x = "Mental health disorder", y = "Mean hours of sleep",
+         title = "Average sleep by prevalence of anxiety and depression") +
+  theme_minimal()
+
+# ANOVA test to determine if there is a significant difference in means
+anova_result <- aov(sleep_hours ~ mh_group, data = data_selected)
+summary(anova_result)
+# p-value = 8.21e-07 which suggests a significant difference in means across groups
+```
