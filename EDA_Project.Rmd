@@ -104,13 +104,15 @@ The distribution of hours slept in a 24-hour period appears to be fairly normall
 ggplot(data_selected, aes(x = factor(therapy_past12))) +
   geom_bar() +
   labs(x = "Received counseling/therapy within past 12 months", y = "Count",
-       title = "Therapy usage among respondents")
+       title = "Therapy usage among respondents") +
+  theme_minimal()
 
 # Restlessness (indicator of psychological distress)
 ggplot(data_selected, aes(x = factor(restless_30d), y = sleep_hours)) +
   geom_boxplot() +
   labs(x = "Restlessness level", y = "Hours of sleep",
-       title = "Sleep duration vs. restlessness")
+       title = "Sleep duration vs. restlessness") +
+  theme_minimal()
 ```
 
 ## Data Analysis:
